@@ -132,7 +132,7 @@
                     case 'sphere':
                         mesh = BABYLON.MeshBuilder.CreateSphere(element.name, element.param, scene);
                         break;
-                    case 'box':
+                    case 'pivot':
                         var line_x = BABYLON.Mesh.CreateLines("line_x", [
                                    new BABYLON.Vector3(0, 0, 0),
                                    new BABYLON.Vector3(1, 0, 0)
@@ -148,12 +148,13 @@
 
                         mesh = BABYLON.Mesh.CreateSphere(element.name, 12, 0.3 , scene);
                         mesh.rotationQuaternion = new BABYLON.Quaternion()
-                        mesh.position.set(0,0,0)
-                        mesh.addChild(line_x)
-                        mesh.addChild(line_y)
-                        mesh.addChild(line_z)
-
-                        //mesh = BABYLON.MeshBuilder.CreateBox(element.name, element.param, scene);
+                        mesh.position.set(0,0,0);
+                        mesh.addChild(line_x);
+                        mesh.addChild(line_y);
+                        mesh.addChild(line_z);
+                        break;
+                    case 'box':
+                        mesh = BABYLON.MeshBuilder.CreateBox(element.name, element.param, scene);
                         break;
                     case 'plane':
                         mesh = BABYLON.MeshBuilder.CreatePlane(element.name, element.param, scene);
