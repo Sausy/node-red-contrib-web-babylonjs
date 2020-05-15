@@ -56,11 +56,15 @@
                                 mesh.position.x = received_msg.values.x;
                                 mesh.position.y = received_msg.values.y;
                                 mesh.position.z = received_msg.values.z;
+                                //var rotationAxis = BABYLON.Vector3.Forward();
+                                //BABYLON.Quaternion.RotationAxisToRef(rotationAxis, angle, pivot.rotationQuaternion);
+
 
                             }
                             break;
                         case 'rotate':
                             console.log("Not yet implemented");
+                            mesh.addRotation(received_msg.values.alpha, 0, 0).addRotation(0, received_msg.values.beta, 0).addRotation(0, 0, received_msg.values.gamma);
                             break;
                         case 'scale':
                             if(received_msg.relative) {
@@ -82,7 +86,7 @@
                 };
 
                 ws.onclose = function () {
-                    // websocket is closed.                    
+                    // websocket is closed.
                     console.log("Connection is closed...");
                 };
                 window.onbeforeunload = function (event) {
@@ -97,7 +101,7 @@
             return ws;
         }
 
-        var canvas = document.getElementById("renderCanvas"); // Get the canvas element 
+        var canvas = document.getElementById("renderCanvas"); // Get the canvas element
         var engine = new BABYLON.Engine(canvas, true); // Generate the BABYLON 3D engine
         /******* Add the create scene function ******/
         var createScene = function () {
@@ -129,13 +133,39 @@
                         mesh = BABYLON.MeshBuilder.CreateSphere(element.name, element.param, scene);
                         break;
                     case 'box':
-                        mesh = BABYLON.MeshBuilder.CreateBox(element.name, element.param, scene);
+                        var line_x = BABYLON.Mesh.CreateLines("line_x", [
+                                   new BABYLON.Vector3(0, 0, 0),
+                                   new BABYLON.Vector3(1, 0, 0)
+                                ], scene);
+                        var line_y = BABYLON.Mesh.CreateLines("line_y", [
+                                   new BABYLON.Vector3(0, 0, 0),
+                                   new BABYLON.Vector3(0, 1, 0)
+                                ], scene);
+                        var line_z = BABYLON.Mesh.CreateLines("line_z", [
+                                   new BABYLON.Vector3(0, 0, 0),
+                                   new BABYLON.Vector3(0, 0, -1)
+                                ], scene);
+
+                        mesh = BABYLON.Mesh.CreateSphere(element.name, 12, 0.3 , scene);
+                        mesh.rotationQuaternion = new BABYLON.Quaternion()
+                        mesh.position.set(0,0,0)
+                        mesh.addChild(line_x)
+                        mesh.addChild(line_y)
+                        mesh.addChild(line_z)
+
+                        //mesh = BABYLON.MeshBuilder.CreateBox(element.name, element.param, scene);
                         break;
                     case 'plane':
                         mesh = BABYLON.MeshBuilder.CreatePlane(element.name, element.param, scene);
                         break;
                     case 'ground':
+                        var myMaterial = new BABYLON.StandardMaterial("myMaterial", scene);
+                        myMaterial.alpha = 0.1;
                         mesh = BABYLON.MeshBuilder.CreateGround(element.name, element.param, scene);
+                        mesh.material = myMaterial;
+                        break;
+                    case 'coord_obj':
+                        mesh = BABYLON.MeshBuilder.CreateSphere(element.name, element.param, scene);
                         break;
                 }
                 all_meshes.push(mesh);
