@@ -40,6 +40,11 @@
     <canvas id="renderCanvas" touch-action="none"></canvas> //touch-action="none" for best results from PEP
     <div class="wrapper"> asdfasdf </div>
     <script type="text/javascript">
+        var ip_server_addr = location.hostname;
+        //console.log(location);
+        //console.log(ip_server_addr);
+        //var ip_server_addr2 = "<?php echo $_SERVER['SERVER_ADDR']; ?>";
+
         var amount_of_lighthouses = 2;
         var scene;
         var mesh_gen = [];
@@ -464,7 +469,10 @@
             if ("WebSocket" in window) {
                 // Let us open a web socket
                 //TODO: Remove localhost
-                ws = new WebSocket("ws://localhost:9099");
+                var ws_url = "ws://" + ip_server_addr + ":9099";
+                console.log(ws_url);
+                //console.log(ip_server_addr2);
+                ws = new WebSocket(ws_url);
                 ws.onopen = function () {
                     // Web Socket is connected, send data using send()
                     ws.send("Websocket Connected");
