@@ -21,18 +21,446 @@
             touch-action: none;
         }
     </style>
+
+    <link rel="stylesheet" type="text/css" href="customstyle.css">
     <script src="https://cdn.babylonjs.com/babylon.js"></script>
     <script src="https://code.jquery.com/pep/0.4.1/pep.js"></script>
+
+
+    <script src="http://static.robotwebtools.org/EventEmitter2/current/eventemitter2.min.js"></script>
+    <script src="http://static.robotwebtools.org/roslibjs/current/roslib.min.js"></script>
+    <script src="http://cdnjs.cloudflare.com/ajax/libs/three.js/r71/three.min.js"></script>
+    <script src="http://static.robotwebtools.org/ros3djs/current/ros3d.min.js"></script>
+
 </head>
 
 <body>
+
+
     <canvas id="renderCanvas" touch-action="none"></canvas> //touch-action="none" for best results from PEP
+    <div class="wrapper"> asdfasdf </div>
     <script type="text/javascript">
+        var amount_of_lighthouses = 2;
         var scene;
+        var mesh_gen = [];
+        var mesh_lighthouse = [];
+        var mesh_gen_rays = [];
+        var tid_rays = setTimeout(mesh_gen_rays_timout, 2000);
+        var tid_ram_flood_hackaround = setTimeout(ram_flood_hackfix2, 3000);
+
+        var tid_buffer_clean = setTimeout(buffer_clean, 1000);
+
+        function buffer_clean(){
+            scene.cleanCachedTextureBuffer();
+            tid_buffer_clean = setTimeout(buffer_clean, 1000);
+            //console.log(rosTopic.size);
+        }
+
+        function ram_flood_hackfix(){
+          rosTopic.unsubscribe();
+          mesh_gen_rays.forEach(ray => {
+              ray.dispose();
+          });
+          //console.log(scene);
+
+          //tid_ram_flood_hackaround = setTimeout(ram_flood_hackfix2, 40);
+        }
+        function ram_flood_hackfix2(){
+
+          rosTopic.subscribe(function(message) {
+
+
+            let comp_string = message.ns;
+            if( comp_string.substring(0,7) == "rays_li"){
+
+              //console.log("visualization_msgs");
+              //console.log(message);
+              //console.log(message.points[0]);
+              //mesh_gen_rays.push(message.points);
+              let current_lighthouse_name = "lighthouse" + comp_string.substring(16,17);
+
+              //console.log(mesh_lighthouse[parseInt(comp_string.substring(16,17),10)].name);
+
+              //let mesh_local = scene.getMeshByName(current_lighthouse_name);
+
+              let mesh_local = mesh_lighthouse[parseInt(comp_string.substring(16,17),10)-1];
+
+              if(mesh_local!= undefined){
+                let ray_name = "ray_" + message.ns;
+                let ray = BABYLON.Mesh.CreateLines(ray_name, [
+                           new BABYLON.Vector3(mesh_local.position.x, mesh_local.position.y, mesh_local.position.z),
+                           new BABYLON.Vector3(message.points[1].x+mesh_local.position.x, message.points[1].y+mesh_local.position.y, message.points[1].z+mesh_local.position.z)
+                        ], scene);
+                mesh_gen_rays.push(ray);
+                mesh_gen_rays_timoutReset();
+              }else{
+                console.log("lighthouse mesh not defined");
+                console.log(parseInt(comp_string.substring(16,17),10));
+              }
+
+            }
+
+            //rosTopic.unsubscribe();
+            //tid_ram_flood_hackaround = setTimeout(ram_flood_hackfix2, 1);
+          });
+          //tid_ram_flood_hackaround = setTimeout(ram_flood_hackfix, 3000);
+
+        }
+
+        function mesh_gen_rays_timoutReset(){
+          ///if(mesh_gen_rays.length > 50){
+            var max = mesh_gen_rays.length;
+            var j = 0;
+            mesh_gen_rays.forEach(ray => {
+                if(max > 20){
+                  ray.dispose();
+                  mesh_gen_rays.shift(); //equals popfront()
+                  max = max - 1;
+                }
+            });
+            /*console.log("msg overflow length scene");
+            console.log(scene.length);
+            console.log("msg overflow length mesh_gen");
+            console.log(mesh_gen.length);
+            console.log("msg overflow length mesh_gen_rays");
+            console.log(mesh_gen_rays.length);*/
+            /*for (var i = 50; i < mesh_gen_rays.length; i++) {
+              mesh_gen_rays[i].ray.dispose();
+              mesh_gen_rays.pop();
+            }*/
+          //}
+          clearInterval(tid_rays);
+          tid_rays = setTimeout(mesh_gen_rays_timout, 2000);
+        }
+
+        function mesh_gen_rays_timout(){
+
+          mesh_gen_rays.forEach(ray => {
+              ray.dispose();
+          });
+          mesh_gen_rays = [];
+          tid_rays = setTimeout(mesh_gen_rays_timout, 2000);
+          console.log("ray_timout reached");
+
+
+        }
+
+
+        //var ros = new ROSLIB.Ros();
+
+        function log_ros(msg) {console.log(msg);  }
+
+        log_ros("Connecting to rosbridge.");
+        //var node = new ros.NodeHandle("ws://localhost:11311");
+        //var ros = new ROSLIB.Ros("ws://localhost:11311");
+        var ros = new ROSLIB.Ros({
+          url : 'ws://192.168.0.31:9090'
+        });
+
+
+        var tfClient = new ROSLIB.TFClient({
+           ros : ros,
+           fixedFrame : 'world',
+           angularThres : 0.01,
+           transThres : 0.01
+         });
+
+         /*
+         var markerClient = new ROS3D.MarkerClient({
+           ros : ros,
+           tfClient : tfClient,
+           topic : '/visualization_marker',
+           rootObject : viewer.schem
+         });*/
+
+         var rosTopic = new ROSLIB.Topic({
+          ros : ros,
+          name : '/visualization_marker',
+          messageType : 'visualization_msgs/Marker',
+        });
+
+        //TODO push into ring buffer
+
+
+
+
+
+
+        for (var i = 1; i <= amount_of_lighthouses; i++) {
+          let current_name = "lighthouse" + i.toString();
+          console.log(current_name);
+
+           tfClient.subscribe(current_name, function(tf) {
+             //console.log("TF: " + current_name);
+             //console.log(tf);
+             var json_data = tf_to_json_translator(tf, current_name);
+             json_data.type="position";
+             mesh_manipulator_interface(json_data);
+
+             //console.log(json_data);
+             //mesh_manipulator_interface({"value":{"name":"left_link5"}})
+           });
+        }
+
+
+         tfClient.subscribe("left_link5", function(tf) {
+           //console.log("TF: left_link5");
+
+           //console.log(tf);
+           var json_data = tf_to_json_translator(tf, "left_link5");
+           json_data.type="position";
+           mesh_manipulator_interface(json_data);
+
+           //console.log(json_data);
+           //mesh_manipulator_interface({"value":{"name":"left_link5"}})
+         });
+
+
+
+
+         /*
+
+         var listener = new ROSLIB.Topic({
+           ros : ros,
+           name : '/listener',
+           messageType : 'std_msgs/String'
+         });
+
+         listener.subscribe(function(message) {
+           console.log('Received message on ' + listener.name + ': ' + message.data);
+         });*/
+
+
+         //=== Connect to ros  bridge server ====
+        ros.on('connection', function() {
+         console.log('Connected to websocket server.');
+       });
+
+       ros.on('error', function(error) {
+         console.log('Error connecting to websocket server: ', error);
+       });
+
+       ros.on('close', function() {
+         console.log('Connection to websocket server closed.');
+       });
+
+
+        var tfClient_array = [];
+        function register_comp_ros(data_)
+        {
+          /*
+           let localtfC = new ROSLIB.TFClient({
+             ros : ros,
+             fixedFrame : 'world',
+             angularThres : 0.01,
+             transThres : 0.01
+           });
+           */
+           // TODO Find the names via the yamel file
+           console.log("reg new component: " + data_);
+
+
+           /*localtfC.subscribe(data_, function(tf) {
+             console.log("TF ");
+             console.log(data_);
+             console.log(tf);
+           });
+
+           tfClient_array.push(localtfC);*/
+
+
+           tfClient.subscribe(data_, function(tf) {
+             //console.log("TF ");
+             //console.log(data_);
+             //console.log(tf);
+             //console.log(tf.translation.x);
+             var json_data = tf_to_json_translator(tf, data_);
+             json_data.type="position";
+             mesh_manipulator_interface(json_data);
+
+             //console.log(json_data);
+
+             //json_data.type="rotation";
+             //mesh_manipulator_interface(json_data);
+             //mesh_manipulator_interface(tf_to_json_translator(tf, "rotation"));
+           });
+
+         // Publishing a Topic
+          // ------------------
+          /*
+          var cmdVel = new ROSLIB.Topic({
+            ros : ros,
+            name : '/listener',
+            messageType : 'std_msgs/String'
+          });
+
+          var twist = new ROSLIB.Message({
+            data: 'js hi'
+          });
+          cmdVel.publish(twist);
+
+          // Subscribing to a Topic
+          // ----------------------
+
+          */
+        }
+
+        function tf_to_json_translator(tf_msg, tf_name){
+          //searchtag: ros
+
+          var txt = '{ \"type\" : \"none\", ' +
+          '\"relative\" : \"false\", ' +
+          '\"values\" : {' +
+             ' \"x\" : 0,' +
+             ' \"y\" : 0,' +
+             ' \"z\" : 0,' +
+             ' \"alpha\" : 0,' +
+             ' \"beta\" : 0,' +
+             ' \"gamma\" : 0, ' +
+             '\"name\" : "init_name"' +
+           '}' +
+         '}';
+
+          var json_data = JSON.parse(txt);
+          json_data.relative = false;
+
+          if(tf_name == undefined){
+            return json_data;
+          }
+
+          //console.log("ros to tf ");
+
+
+
+          json_data.type = "position";
+          json_data.values.name = tf_name;
+          //console.log(tf_msg);
+          //console.log(tf_msg.translation.x);
+          json_data.values.x = tf_msg.translation.x;
+          json_data.values.y = tf_msg.translation.y;
+          json_data.values.z = tf_msg.translation.z;
+
+          var q = new THREE.Quaternion(tf_msg.rotation.x, tf_msg.rotation.y, tf_msg.rotation.y, tf_msg.rotation.w);
+          var euler_roation = new THREE.Euler();
+          euler_roation.setFromQuaternion(q);
+          //console.log(tf_msg.translation.x);
+          json_data.values.alpha = euler_roation.x;
+          json_data.values.beta = euler_roation.y;
+          json_data.values.gamma = euler_roation.z;
+          //tf.translation.x
+
+          //INFO: Babylon support Qaternions ... mesh.rotationQuaternion
+
+
+          return json_data;
+        }
+
+        function mesh_manipulator_interface(received_msg){
+
+          let mesh;
+
+          //console.log(received_msg.values.name);
+
+          try {
+             if(received_msg.values.name != undefined){
+               //console.log(received_msg.values.name);
+               mesh = scene.getMeshByName(received_msg.values.name);
+             }else {
+               //console.log(received_msg.name);
+               mesh = scene.getMeshByName(received_msg.name);
+             }
+          }catch(error){
+            console.log("received_msg.values.name ... was not defined");
+            //console.log(received_msg);
+            mesh = scene.getMeshByName(received_msg.name);
+          }
+
+          /*
+          try {
+             if(received_msg.values.name != undefined){
+               console.log(received_msg.values.name);
+               mesh = scene.getMeshByName(received_msg.values.name);
+             }
+          }catch(error){
+            console.log("received_msg.values.name ... was not defined");
+            console.log(received_msg.name);
+            mesh = scene.getMeshByName(received_msg.name);
+          }
+          */
+
+
+          if(mesh != undefined){
+
+          switch (received_msg.type) {
+              case 'position':
+                  if (received_msg.relative) {
+                      mesh.position.x += received_msg.values.x;
+                      mesh.position.y += received_msg.values.y;
+                      mesh.position.z += received_msg.values.z;
+
+                  } else {
+                      mesh.position.x = received_msg.values.x;
+                      mesh.position.y = received_msg.values.y;
+                      mesh.position.z = received_msg.values.z;
+                      //console.log("[pos change] Mesh name " + mesh.name);
+                      //if(mesh.name == "left_link5"){
+                      //  console.log(received_msg.values.x);
+                      //}
+                      //var rotationAxis = BABYLON.Vector3.Forward();
+                      //BABYLON.Quaternion.RotationAxisToRef(rotationAxis, angle, pivot.rotationQuaternion);
+                  }
+                  break;
+              case 'amount':
+                  console.log("set amount of new pivots");
+                  console.log(received_msg.values.amount);
+                  //console.log(received_msg.values.x);
+                  //mesh_gen.push(received_msg.values.genname);
+                  var i;
+                  mesh_gen=[];
+                  for (var i = 0; i < received_msg.values.amount; i++) {
+                    mesh_gen.push("pivot"+i);
+                    //console.log("pivot"+i);
+                    register_comp_ros("pivot"+i);
+                  }
+
+                  loadScene();
+
+
+                  break;
+              case 'rotate':
+                  console.log("Not yet implemented");
+                  mesh.addRotation(received_msg.values.alpha, 0, 0).addRotation(0, received_msg.values.beta, 0).addRotation(0, 0, received_msg.values.gamma);
+                  break;
+              case 'scale':
+                  if(received_msg.relative) {
+                      mesh.scaling.x += received_msg.values.x;
+                      mesh.scaling.y += received_msg.values.y;
+                      mesh.scaling.z += received_msg.values.z;
+                  } else {
+                      mesh.scaling.x = received_msg.values.x;
+                      mesh.scaling.y = received_msg.values.y;
+                      mesh.scaling.z = received_msg.values.z;
+                  }
+                  break;
+              case 'reload':
+                  console.log("Reload Recieved");
+                  loadScene();
+                  break;
+          }
+          //console.log("Message is received...");
+        }else{
+          console.log("Message is received...but graphical Object none existing");
+        }
+
+        }
+
         function connectToWs() {
 
             var ws;
             console.log("============== Establish Connection ============")
+
+
+
             if ("WebSocket" in window) {
                 // Let us open a web socket
                 //TODO: Remove localhost
@@ -44,45 +472,9 @@
 
                 ws.onmessage = function (evt) {
                     var received_msg = JSON.parse(evt.data);
-                    let mesh = scene.getMeshByName(received_msg.name);
-                    switch (received_msg.type) {
-                        case 'position':
-                            if (received_msg.relative) {
-                                mesh.position.x += received_msg.values.x;
-                                mesh.position.y += received_msg.values.y;
-                                mesh.position.z += received_msg.values.z;
-
-                            } else {
-                                mesh.position.x = received_msg.values.x;
-                                mesh.position.y = received_msg.values.y;
-                                mesh.position.z = received_msg.values.z;
-                                //var rotationAxis = BABYLON.Vector3.Forward();
-                                //BABYLON.Quaternion.RotationAxisToRef(rotationAxis, angle, pivot.rotationQuaternion);
+                    mesh_manipulator_interface(received_msg);
 
 
-                            }
-                            break;
-                        case 'rotate':
-                            console.log("Not yet implemented");
-                            mesh.addRotation(received_msg.values.alpha, 0, 0).addRotation(0, received_msg.values.beta, 0).addRotation(0, 0, received_msg.values.gamma);
-                            break;
-                        case 'scale':
-                            if(received_msg.relative) {
-                                mesh.scaling.x += received_msg.values.x;
-                                mesh.scaling.y += received_msg.values.y;
-                                mesh.scaling.z += received_msg.values.z;
-                            } else {
-                                mesh.scaling.x = received_msg.values.x;
-                                mesh.scaling.y = received_msg.values.y;
-                                mesh.scaling.z = received_msg.values.z;
-                            }
-                            break;
-                        case 'reload':
-                            console.log("Reload Recieved");
-                            loadScene();
-                            break;
-                    }
-                    console.log("Message is received...");
                 };
 
                 ws.onclose = function () {
@@ -103,12 +495,21 @@
 
         var canvas = document.getElementById("renderCanvas"); // Get the canvas element
         var engine = new BABYLON.Engine(canvas, true); // Generate the BABYLON 3D engine
+
+        //to reduce RAM usage
+        engine.enableOfflineSupport = false; //Turning off IndexedDB
+        //var engine = new BABYLON.Engine(canvas, true, {doNotHandleContextLost: true});  // Turning off support for context lost / contest restore
+        engine.doNotHandleContextLost = true;  // Turning off support for context lost / contest restore
+
         /******* Add the create scene function ******/
         var createScene = function () {
             // Create the scene space
             scene = new BABYLON.Scene(engine);
             // Add a camera to the scene and attach it to the canvas
-            var camera = new BABYLON.ArcRotateCamera("Camera", Math.PI / 2, Math.PI / 2, 2, BABYLON.Vector3.Zero(), scene);
+            // Parameters: alpha, beta, radius, target position, scene
+            var camera = new BABYLON.ArcRotateCamera("Camera", -2*Math.PI/3.5,  2*Math.PI/3, 9, new BABYLON.Vector3(-1, 0, 0), scene);
+            // Positions the camera overwriting alpha, beta, radius
+            //camera.setPosition(new BABYLON.Vector3(10.253, 5.82251, -9.45717));
             camera.attachControl(canvas, true);
             // Add lights to the scene
             var light1 = new BABYLON.HemisphericLight("light1", new BABYLON.Vector3(1, 1, 0), scene);
@@ -117,6 +518,73 @@
             return scene;
         };
 
+
+        var showAxis = function(size) {
+          var makeTextPlane = function(text, color, size) {
+          var dynamicTexture = new BABYLON.DynamicTexture("DynamicTexture", 50, scene, true);
+          dynamicTexture.hasAlpha = true;
+          dynamicTexture.drawText(text, 5, 40, "bold 36px Arial", color , "transparent", true);
+          var plane = new BABYLON.Mesh.CreatePlane("TextPlane", size, scene, true);
+          plane.material = new BABYLON.StandardMaterial("TextPlaneMaterial", scene);
+          plane.material.backFaceCulling = false;
+          plane.material.specularColor = new BABYLON.Color3(0, 0, 0);
+          plane.material.diffuseTexture = dynamicTexture;
+          return plane;
+           };
+
+          var axisX = BABYLON.Mesh.CreateLines("axisX", [
+            new BABYLON.Vector3.Zero(), new BABYLON.Vector3(size, 0, 0), new BABYLON.Vector3(size * 0.95, 0.05 * size, 0),
+            new BABYLON.Vector3(size, 0, 0), new BABYLON.Vector3(size * 0.95, -0.05 * size, 0)
+            ], scene);
+          axisX.color = new BABYLON.Color3(1, 0, 0);
+          var xChar = makeTextPlane("X", "red", size / 10);
+          xChar.position = new BABYLON.Vector3(0.9 * size, -0.05 * size, 0);
+          var axisY = BABYLON.Mesh.CreateLines("axisY", [
+              new BABYLON.Vector3.Zero(), new BABYLON.Vector3(0, size, 0), new BABYLON.Vector3( -0.05 * size, size * 0.95, 0),
+              new BABYLON.Vector3(0, size, 0), new BABYLON.Vector3( 0.05 * size, size * 0.95, 0)
+              ], scene);
+          axisY.color = new BABYLON.Color3(0, 1, 0);
+          var yChar = makeTextPlane("Y", "green", size / 10);
+          yChar.position = new BABYLON.Vector3(0, 0.9 * size, -0.05 * size);
+          var axisZ = BABYLON.Mesh.CreateLines("axisZ", [
+              new BABYLON.Vector3.Zero(), new BABYLON.Vector3(0, 0, size), new BABYLON.Vector3( 0 , -0.05 * size, size * 0.95),
+              new BABYLON.Vector3(0, 0, size), new BABYLON.Vector3( 0, 0.05 * size, size * 0.95)
+              ], scene);
+          axisZ.color = new BABYLON.Color3(0, 0, 1);
+          var zChar = makeTextPlane("Z", "blue", size / 10);
+          zChar.position = new BABYLON.Vector3(0, 0.05 * size, 0.9 * size);
+        };
+
+         function localAxes(size_) {
+
+            var pilot_local_axisX = BABYLON.Mesh.CreateLines("pilot_local_axisX", [
+                                    new BABYLON.Vector3.Zero(), new BABYLON.Vector3(size_, 0, 0), new BABYLON.Vector3(size_ * 0.95, 0.05 * size_, 0),
+                                    new BABYLON.Vector3(size_, 0, 0), new BABYLON.Vector3(size_ * 0.95, -0.05 * size_, 0)
+                                    ], scene);
+            pilot_local_axisX.color = new BABYLON.Color3(1, 0, 0);
+
+            pilot_local_axisY = BABYLON.Mesh.CreateLines("pilot_local_axisY", [
+                                    new BABYLON.Vector3.Zero(), new BABYLON.Vector3(0, size_, 0), new BABYLON.Vector3(-0.05 * size_, size_ * 0.95, 0),
+                                    new BABYLON.Vector3(0, size_, 0), new BABYLON.Vector3(0.05 * size_, size_ * 0.95, 0)
+                              ], scene);
+            pilot_local_axisY.color = new BABYLON.Color3(0, 1, 0);
+
+            var pilot_local_axisZ = BABYLON.Mesh.CreateLines("pilot_local_axisZ", [
+                                    new BABYLON.Vector3.Zero(), new BABYLON.Vector3(0, 0, size_), new BABYLON.Vector3( 0 , -0.05 * size_, size_ * 0.95),
+                                    new BABYLON.Vector3(0, 0, size_), new BABYLON.Vector3( 0, 0.05 * size_, size_ * 0.95)
+                                    ], scene);
+            pilot_local_axisZ.color = new BABYLON.Color3(0, 0, 1);
+
+          var local_origin = BABYLON.MeshBuilder.CreateBox("local_origin", {size:1}, scene);
+          local_origin.isVisible = false;
+
+            pilot_local_axisX.parent = local_origin;
+            pilot_local_axisY.parent = local_origin;
+            pilot_local_axisZ.parent = local_origin;
+
+            return local_origin;
+        }
+
         var all_meshes = [];
 
         var drawMeshes = function (scene, sceneData) {
@@ -124,6 +592,11 @@
             all_meshes.forEach(mesh => {
                 mesh.dispose();
             });
+            mesh_lighthouse.forEach(mesh => {
+                mesh.dispose();
+            });
+
+
 
             // Add and manipulate meshes in the scene
             sceneData.forEach(element => {
@@ -133,6 +606,38 @@
                         mesh = BABYLON.MeshBuilder.CreateSphere(element.name, element.param, scene);
                         break;
                     case 'pivot':
+                        console.log("Amount of additional pivots");
+                        console.log(mesh_gen.length);
+                        var i;
+                        for (i = 0; i < mesh_gen.length; i++) {
+                          console.log(mesh_gen[i]);
+
+
+                          var localOrigin = localAxes(0.3);
+
+                          mesh = BABYLON.Mesh.CreateSphere(mesh_gen[i], 12, 0.1, scene);
+                          localOrigin.parent = mesh;
+
+                          all_meshes.push(mesh);
+                        }
+
+                        for (var i = 1; i <= amount_of_lighthouses; i++) {
+                          let current_name = "lighthouse" + i.toString();
+                          //console.log("Object gen lighthouse");
+                          //console.log(current_name);
+                          let mesh_local = null;
+                          mesh_local = BABYLON.MeshBuilder.CreateBox(current_name, {size:0.2}, scene);
+                          mesh_lighthouse.push(mesh_local);
+                          all_meshes.push(mesh_local);
+                        }
+
+
+                        console.log("name of pivot set via nod-red interface");
+                        console.log(element.name);
+
+                        var localOrigin = localAxes(0.3);
+
+                        /*
                         var line_x = BABYLON.Mesh.CreateLines("line_x", [
                                    new BABYLON.Vector3(0, 0, 0),
                                    new BABYLON.Vector3(1, 0, 0)
@@ -145,13 +650,16 @@
                                    new BABYLON.Vector3(0, 0, 0),
                                    new BABYLON.Vector3(0, 0, -1)
                                 ], scene);
+                                */
 
-                        mesh = BABYLON.Mesh.CreateSphere(element.name, 12, 0.3 , scene);
-                        mesh.rotationQuaternion = new BABYLON.Quaternion()
+                        mesh = BABYLON.Mesh.CreateSphere(element.name, 12, 0.1, scene);
+                        localOrigin.parent = mesh;
+                        /*mesh.rotationQuaternion = new BABYLON.Quaternion()
                         mesh.position.set(0,0,0);
                         mesh.addChild(line_x);
                         mesh.addChild(line_y);
-                        mesh.addChild(line_z);
+                        mesh.addChild(line_z);*/
+
                         break;
                     case 'box':
                         mesh = BABYLON.MeshBuilder.CreateBox(element.name, element.param, scene);
@@ -163,6 +671,8 @@
                         var myMaterial = new BABYLON.StandardMaterial("myMaterial", scene);
                         myMaterial.alpha = 0.1;
                         mesh = BABYLON.MeshBuilder.CreateGround(element.name, element.param, scene);
+                        //showAxis(3);
+                        mesh.addRotation(-Math.PI/2, 0, 0).addRotation(0, Math.PI/2, 0).addRotation(0, 0, 0);
                         mesh.material = myMaterial;
                         break;
                     case 'coord_obj':
@@ -170,6 +680,8 @@
                         break;
                 }
                 all_meshes.push(mesh);
+
+
             });
         };
         /********** Connect/Reconnect with Heartbeat ****/
@@ -193,6 +705,9 @@
 
         /******* Load scene from backend *********/
         var scene = createScene();
+
+
+
         loadScene();
 
         window.addEventListener("resize", function () { // Watch for browser/canvas resize events
