@@ -158,8 +158,9 @@
         log_ros("Connecting to rosbridge.");
         //var node = new ros.NodeHandle("ws://localhost:11311");
         //var ros = new ROSLIB.Ros("ws://localhost:11311");
+        var ws_url = 'ws://' + ip_server_addr + ':9090';
         var ros = new ROSLIB.Ros({
-          url : 'ws://192.168.0.31:9090'
+          url : ws_url
         });
 
 
